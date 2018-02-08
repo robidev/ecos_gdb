@@ -1,0 +1,165 @@
+__author__  = robin
+__email__   = ...
+__version__ = 1.0.0
+__date__    = 01AUG2017
+
+MAIN startup sequence
+----------------------
+timeout = TIMEOUT_READ
+baudrate = 115200
+port = '/dev/ttyUSB0'# assign argument to port, if an argument is provided, else ttyUSB0 is default
+
+ensure the device buffers on host and client are properly synced
+ERROR: cannot sync with the device, trying to (re)start the interface
+if we cannot sync, try to start the debugger using 'sys mem\n' command
+try another resync, if we still cannot sync, give up; ERROR: cannot sync with the device, giving up
+  
+Retrieve values from device
+print code area, registers area, dump area, stack area and the console
+
+
+Description of functionality
+----------------------------
+Help
+  interface commands:
+    if COMMAND == "?": output (q)uit | read (m)em | (w)rite mem | read (r)eg| | (e)write reg | (b)reakpoint | (c)ontinue |(s)tep | (y)refresh
+
+   
+low-level interface functions 
+-----------------------------
+stop():
+    function to stop the debugger, and continue normal program execution
+  interface commands:
+    continue program execution: (c)ontinue
+    quit the debugger:          (q)uit
+
+get_mem(ADDRESS):
+    function to retrieve 4 bytes of memory from the device at ADDRESS
+  interface commands:
+    read memory usage: m [ADDRESS]
+
+set_mem(ADDRESS,VALUE):
+    function to write VALUE at ADDRESS in the device memory
+  interface commands:
+    write memory usage: w [ADDRESS] [VALUE](in hex!)
+
+def get_register(REGISTER):
+    function to read REGISTER in the device {0=SP, 1=CSPR, 2=R0, .. 14=R12, 15=LR, 16=PC}
+  interface commands:
+    read register usage: r [REG](in hex!)
+    register index definitions:
+    R0 = 2
+    R1 = 3
+    R2 = 4
+    R3 = 5
+    R4 = 6
+    R5 = 7
+    R6 = 8
+    R7 = 9
+    R8 = 10
+    R9 = 11
+    R10 = 12
+    R11 = 13
+    R12 = 14
+    LR = 15
+    PC = 16
+    SP = 0
+    CSPR = 1
+
+set_register(REGISTER,VALUE):
+    function to write VALUE in REGISTER
+  interface commands:
+    write reg usage: e [REG] [VALUE](in hex!)
+
+set_breakpoint(ADDRESS):
+    function to set 1 new breakpoint in the code at ADDRESS, that will be hit after the debugger continues
+    only 1 breakpoint is currently supported
+  interface commands:
+    breakpoint usage: b [ADDRESS]
+    step 1 instruction and break:   (s)tep
+    this address is where the debugger entry point resides, it is used to calculate the jump when setting a breakpoint: GDB_ADDR = 0x0011c394
+
+resync_interface():
+    function to ensure the interface between the host and the debugged system is synchronised
+    return -1 means failed, return 0 means succes
+  interface commands:
+    refresh the interface:          (y) refresh
+    tweak this value to speed up the interface
+    TIMEOUT_READ = 1     #timeout when performing serial.read
+    SYNC_RETRIES = 10    #retries when trying to sync
+    SLEEP_TIME = 0.01    #sleep period after a read or write, to allow the debugged device to parse the data
+
+serial_write(data):
+    function to write the data to the serial port using delays for the debugger to parse the data
+
+serial_read(size=1):
+    function to read the data, and providing time for the debugger to sync
+
+start_debugger():
+    function to start the debugger on the device after a reboot
+    
+    
+visualisation functions
+------------------------
+get_code(PC_P):
+    function to retrieve the code at PC_P, and return disassembled
+  interface commands:
+    instr usage: instr [OFFSET]
+    intructions up      (id)
+    instructions down:  (iu)   
+
+get_stack(ADDRESS):
+    function to retrieve the stack data at ADDRESS
+  interface commands:
+    stack usage: stack [OFFSET]
+    stack 4 byte down:  (sd)
+    stack 4 byte up:    (su)
+
+get_dump(DUMP_ADDRESS):
+    function to retrieve a dump of the memory at DUMP_ADDRESS.
+  interface commands:
+    dump usage: dump [OFFSET]
+    dump 4 byte up:     (dd)
+    dump 4 byte down:   (du)
+
+get_registers():
+    function to retrieve all registers
+
+print_console(MESSAGE, P_INS, DUMP, STACK, FLAGS, REGISTERS):
+    function to print the console
+
+    
+High level debug functions
+----------------------------
+write_shellcode(addr, file_name):
+    function to write a binary file at a place in memory
+  interface commands:
+    write shellcode usage: write_shellcode [ADDRESS] [SHELLCODE_FILE]"\
+
+run_shellcode(addr): 
+    run the schellcode at the address as a normal function, and return to the debugger.
+  interface commands:
+    run shellcode usage: run_shellcode [ADDRESS]
+
+code_patcher(patch_addr, code_addr, file_name):
+    this instruction allows any piece of code to be patched without affecting the original code,
+    it will patch an instruction with a branch, call the code provided in 'file_name', and patch the
+    original instruction back. finally, it will jump back to the original code, and resume execution
+    arguments are: 
+       patch_addr      - address of code to be patched
+       code_addr       - address where code should be placed
+       file_name       - file with the code to be written
+  interface commands:
+    code_patcher usage: code_patcher [PATCH_ADDRESS] [CODE_ADDRESS] [SHELLCODE_FILE]
+
+
+Helper functions
+-----------------
+class Spinner:
+    simple helper class to display a static spinner while retrieving data
+
+to_bytes(seq):
+    helper class for the serial functions
+
+parse_number( arg ):
+    parse a string, and convert into an int

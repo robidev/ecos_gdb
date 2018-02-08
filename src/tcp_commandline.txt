@@ -1,0 +1,156 @@
+@0025f068 =...
+@2430 = right after the call to tcp..
+@000e352c = load r1 with r11
+@0025F0Bc = r0 in 24xx
+@0012FDF4 = memory
+@2388 = strcmp
+
+@stdio_writeline - 00061B40
+@debug_printf - 000644CC
+@
+
+
+@overwrirte branch to getline @@@@@@
+.org    0x0000242c
+                        BL getline
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                        
+.org    0x000613c8 @r0=buf,r0 is res.
+strlen:                 MOV				PC, LR              @strlen, , ret=r0
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@                        
+.org    0x00061b40
+                        B  send_str           
+orginal_printline:
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@           
+.org    0x0006288C                                          @0x000644F0
+vprintf:                MOV				PC, LR              @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+.org    0x000644d0
+                        B   s_printf
+.org    0x000644e8
+orginal_print_text:
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+.org    0x00068df8                                          @close arg=r0
+close:                  MOV				PC, LR      
+.org 	0x00069b90									        @socket
+socket:	                MOV				PC, LR	        
+.org 	0x00069cb8 									        @accept
+accept:		            MOV				PC, LR      
+.org 	0x00069e04 									        @bind
+bind:		            MOV				PC, LR      
+.org 	0x0006a0f8 									        @listen
+listen:		            MOV				PC, LR      
+.org 	0x0006a2a8									        @recv
+recv:	                MOV				PC, LR	        
+.org 	0x0006a3c0 									        @send
+send:			        MOV				PC, LR	        
+.org    0x0006a4a8                                          @shutdown  arg=r0
+shutdown:               MOV				PC, LR   
+
+.global _start
+.org    0x000e3490
+_start:
+getline:        STMFD 			sp!, {R0-R12, LR}
+                add	            R11, sp, #4
+                sub	            sp, sp, #64
+                sub	            r3, R11, #32
+            
+                ldr             r9,=0x000E38D0                @load addr to check if socket is initialized
+                ldr             r0,[r9,#8]
+                cmp             r0,#1                       @if value=1
+                beq             loop                    @connection existed, so do a recv
+                
+                MOV             R3, #2
+                STRB            R3, [R11,#-67]              @ store family=AF_INET 
+                
+                LDR             R3, =0xA20Fa20f
+                STRH            R3, [R11,#-66]              @ store port=4002      
+                
+                LDR             R3, =0x00000000
+                STR             R3, [R11,#-64]              @ store IP=0.0.0.0
+                
+                MOV             R3, #32 ;
+                STRB            R3, [R11,#-68]              @ store len             
+                
+                MOV             R2, #6
+                MOV             R1, #1
+                MOV             R0, #2
+                BL              socket                      @ open tcp socket, ret=r0
+                STR             R0, [r9, #4]               @ store socket on stack (r11-8)
+               
+                SUB             R1, R11, #68
+                MOV             R2, #32
+                LDR             R0, [r9, #4]               @ get socket on stack (r11-8)
+                BL              bind                        @ bind to port using struct
+                
+                MOV             R1, #1
+                LDR             R0, [r9, #4]               @ get socket on stack (r11-8)
+                BL              listen
+                
+                mov             r0,#1                @load addr to store initialized socket
+                str             r0,[r9,#8]                
+                
+accept_l:       mov	            r3, #32
+                str	            r3, [R11, #-36]
+                sub	            r2, R11, #36
+                sub	            r1, R11, #68               
+                ldr             r0, [r9, #4]
+                BL              accept
+                STR             R0, [r9]             @ store connect result on stack (r11-12)
+                cmp	            r0, #0                      @ accept less or equal to 0
+                ble	            accept_l                    @ then go back and try again
+
+loop:           LDR             R1, [R11, #-4]                @ buf
+                MOV             R3, #0
+                MOV             R2, #50
+                LDR             R0, [r9]             @ get socket on stack 
+                BL              recv                        @ recv max 50 bytes
+                CMP             R0, #0                  
+                bgt             exit
+                
+                mov	            r1, #2
+                ldr	            r0, [r9]
+                bl	            shutdown                    @shutdown accepted port
+                ldr	            r0, [r9]
+                bl	            close                       @close accepted port, e51b0008
+                b               accept_l                    @wait for next connection
+
+exit:           ADD             sp, sp, #64					@ add 64 to re-align the stack
+                LDMFD			SP!, {R0-R12, PC}       @ if error, close, and wait to accept new connection
+                                                            @ if 1 or higher, go back, and parse input string
+                
+@stdio_writeline - uart_maybe(00061B40),bl, r0=string, send over tcp, load pc, and load lr of original instr=0x64370
+send_str:       MOV				R9,R0                @ load buffer-address in r1
+                bl              strlen
+                MOV             R2, r0				 @load len into R2
+                MOV             R3, #0 
+                LDR             R1, =0x000E38D0
+                LDR             R0, [R1]
+                mov             r1, r9
+                BL              send
+				B				orginal_printline
+				
+				
+@print_text_uart - vprintf(000644E4), r2=string, r3=va(args), sprintf, send over tcp, load pc, and load lr of original instr
+s_printf:       SUB             R11, R12, #0x14     @maybe its #0x10
+                LDR             R0, =0x000E38DC     @load buffer in R0
+                MOV             R1, #0x7FFFFFFF
+                LDR             R2, [R11,#4]        @varg_r0
+                ADD             R3, R11, #8
+                BL              vprintf             @ret(r0)=strlen,    0006288C(print_sub)
+                @print buffer to tcp:
+                MOV             R3, #0
+                MOV				R2,R0                @ load strlen in r2
+                LDR             R1, =0x000E38DC
+                LDR             R0, =0x000E38D0
+                LDR             R0, [R0]
+                BL              send
+				B				orginal_print_text	
+.ltorg
+	
+				
+				
